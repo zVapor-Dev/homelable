@@ -8,7 +8,8 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_principal
+from app.api.principal import Principal
 from app.core.config import settings
 from app.db.database import AsyncSessionLocal, get_db
 from app.db.models import Node, PendingDevice, ScanRun
@@ -56,7 +57,7 @@ async def _background_scan(run_id: str, ranges: list[str]) -> None:
 async def trigger_scan(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: Principal = Depends(get_current_principal),
 ) -> ScanRun:
     ranges = settings.scanner_ranges
     run = ScanRun(status="running", ranges=ranges)
@@ -71,7 +72,7 @@ async def trigger_scan(
 async def stop_scan(
     run_id: str,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: Principal = Depends(get_current_principal),
 ) -> dict[str, bool]:
     try:
         uuid.UUID(run_id)
@@ -87,7 +88,7 @@ async def stop_scan(
 
 
 @router.get("/pending", response_model=list[PendingDeviceResponse])
-async def list_pending(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> list[PendingDevice]:
+async def list_pending(db: AsyncSession = Depends(get_db), _: Principal = Depends(get_current_principal)) -> list[PendingDevice]:
     result = await db.execute(select(PendingDevice).where(PendingDevice.status == "pending"))
     return list(result.scalars().all())
 
@@ -95,7 +96,7 @@ async def list_pending(db: AsyncSession = Depends(get_db), _: str = Depends(get_
 @router.delete("/pending", response_model=dict)
 async def clear_pending(
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: Principal = Depends(get_current_principal),
 ) -> dict[str, int]:
     from sqlalchemy import delete as sa_delete
     result = await db.execute(sa_delete(PendingDevice).where(PendingDevice.status == "pending"))
@@ -104,7 +105,7 @@ async def clear_pending(
 
 
 @router.get("/hidden", response_model=list[PendingDeviceResponse])
-async def list_hidden(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> list[PendingDevice]:
+async def list_hidden(db: AsyncSession = Depends(get_db), _: Principal = Depends(get_current_principal)) -> list[PendingDevice]:
     result = await db.execute(select(PendingDevice).where(PendingDevice.status == "hidden"))
     return list(result.scalars().all())
 
@@ -113,7 +114,7 @@ async def list_hidden(db: AsyncSession = Depends(get_db), _: str = Depends(get_c
 async def bulk_approve_devices(
     payload: BulkActionRequest,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: Principal = Depends(get_current_principal),
 ) -> dict[str, Any]:
     result = await db.execute(
         select(PendingDevice).where(
@@ -151,7 +152,7 @@ async def bulk_approve_devices(
 async def bulk_hide_devices(
     payload: BulkActionRequest,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: Principal = Depends(get_current_principal),
 ) -> dict[str, Any]:
     result = await db.execute(
         select(PendingDevice).where(
@@ -171,7 +172,7 @@ async def approve_device(
     device_id: str,
     node_data: NodeCreate,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user),
+    _: Principal = Depends(get_current_principal),
 ) -> dict[str, Any]:
     device = await db.get(PendingDevice, device_id)
     if not device:
@@ -196,7 +197,7 @@ async def approve_device(
 
 @router.post("/pending/{device_id}/hide")
 async def hide_device(
-    device_id: str, db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)
+    device_id: str, db: AsyncSession = Depends(get_db), _: Principal = Depends(get_current_principal)
 ) -> dict[str, bool]:
     device = await db.get(PendingDevice, device_id)
     if not device:
@@ -208,7 +209,7 @@ async def hide_device(
 
 @router.post("/pending/{device_id}/ignore")
 async def ignore_device(
-    device_id: str, db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)
+    device_id: str, db: AsyncSession = Depends(get_db), _: Principal = Depends(get_current_principal)
 ) -> dict[str, bool]:
     device = await db.get(PendingDevice, device_id)
     if not device:
@@ -219,18 +220,18 @@ async def ignore_device(
 
 
 @router.get("/runs", response_model=list[ScanRunResponse])
-async def list_runs(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> list[ScanRun]:
+async def list_runs(db: AsyncSession = Depends(get_db), _: Principal = Depends(get_current_principal)) -> list[ScanRun]:
     result = await db.execute(select(ScanRun).order_by(ScanRun.started_at.desc()).limit(20))
     return list(result.scalars().all())
 
 
 @router.get("/config", response_model=ScanConfig)
-async def get_scan_config(_: str = Depends(get_current_user)) -> ScanConfig:
+async def get_scan_config(_: Principal = Depends(get_current_principal)) -> ScanConfig:
     return ScanConfig(ranges=settings.scanner_ranges)
 
 
 @router.post("/config", response_model=ScanConfig)
-async def update_scan_config(payload: ScanConfig, _: str = Depends(get_current_user)) -> ScanConfig:
+async def update_scan_config(payload: ScanConfig, _: Principal = Depends(get_current_principal)) -> ScanConfig:
     previous = settings.scanner_ranges
     settings.scanner_ranges = payload.ranges
     try:

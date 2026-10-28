@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_principal
+from app.api.principal import Principal
 from app.db.database import get_db
 from app.db.models import CanvasState, Edge, Node
 from app.schemas.canvas import CanvasSaveRequest, CanvasStateResponse
@@ -16,7 +17,7 @@ router = APIRouter()
 
 
 @router.get("", response_model=CanvasStateResponse)
-async def load_canvas(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> CanvasStateResponse:
+async def load_canvas(db: AsyncSession = Depends(get_db), _: Principal = Depends(get_current_principal)) -> CanvasStateResponse:
     nodes = (await db.execute(select(Node))).scalars().all()
     edges = (await db.execute(select(Edge))).scalars().all()
     state = await db.get(CanvasState, 1)
@@ -31,7 +32,7 @@ async def load_canvas(db: AsyncSession = Depends(get_db), _: str = Depends(get_c
 
 @router.post("/save")
 async def save_canvas(
-    body: CanvasSaveRequest, db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)
+    body: CanvasSaveRequest, db: AsyncSession = Depends(get_db), _: Principal = Depends(get_current_principal)
 ) -> dict[str, bool]:
     incoming_node_ids = {n.id for n in body.nodes}
     incoming_edge_ids = {e.id for e in body.edges}
