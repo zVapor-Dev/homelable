@@ -11,11 +11,14 @@ import { parseYamlToCanvas } from '@/utils/importYaml'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { toast } from 'sonner'
+import { Loader2 } from 'lucide-react'
 import { CanvasContainer } from '@/components/canvas/CanvasContainer'
 import { Sidebar } from '@/components/panels/Sidebar'
 import { Toolbar } from '@/components/panels/Toolbar'
 import { DetailPanel } from '@/components/panels/DetailPanel'
 import { LoginPage } from '@/components/LoginPage'
+import { OAuthCallbackPage } from '@/components/OAuthCallbackPage'
+import { FirstTimeSetupPage } from '@/components/FirstTimeSetupPage'
 import { NodeModal } from '@/components/modals/NodeModal'
 import { EdgeModal } from '@/components/modals/EdgeModal'
 import { ScanConfigModal } from '@/components/modals/ScanConfigModal'
@@ -26,7 +29,7 @@ import { ShortcutsModal } from '@/components/modals/ShortcutsModal'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useThemeStore } from '@/stores/themeStore'
-import { canvasApi } from '@/api/client'
+import { canvasApi, setupApi } from '@/api/client'
 import { demoNodes, demoEdges } from '@/utils/demoData'
 import { useStatusPolling } from '@/hooks/useStatusPolling'
 import type { NodeData, EdgeData, CustomStyleDef } from '@/types'
@@ -42,6 +45,18 @@ export default function App() {
   const { activeTheme, setTheme, customStyle, setCustomStyle } = useThemeStore()
 
   useStatusPolling()
+
+  const [setupGate, setSetupGate] = useState<'loading' | 'setup' | 'ready'>(() =>
+    STANDALONE ? 'ready' : 'loading',
+  )
+
+  useEffect(() => {
+    if (STANDALONE) return
+    setupApi
+      .status()
+      .then((r) => setSetupGate(r.data.setup_pending ? 'setup' : 'ready'))
+      .catch(() => setSetupGate('ready'))
+  }, [])
 
   const [themeModalOpen, setThemeModalOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -373,6 +388,26 @@ export default function App() {
 
   const editNode = editNodeId ? nodes.find((n) => n.id === editNodeId) : null
   const editEdge = editEdgeId ? edges.find((e) => e.id === editEdgeId) : null
+
+  if (!STANDALONE && setupGate === 'loading') {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-[#0d1117] text-muted-foreground gap-2">
+        <Loader2 className="animate-spin text-[#00d4ff]" size={22} />
+        <span className="text-sm">Loading…</span>
+      </div>
+    )
+  }
+
+  if (!STANDALONE && setupGate === 'setup') {
+    return <FirstTimeSetupPage onComplete={() => setSetupGate('ready')} />
+  }
+
+  const oauthCallbackPath =
+    !STANDALONE && typeof globalThis.window !== 'undefined' && window.location.pathname === '/oauth/callback'
+
+  if (oauthCallbackPath && !isAuthenticated) {
+    return <OAuthCallbackPage />
+  }
 
   if (!STANDALONE && !isAuthenticated) return <LoginPage />
 

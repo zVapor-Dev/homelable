@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
 import { scanApi, settingsApi } from '@/api/client'
+import type { AuthSettingsRead } from '@/api/client'
 import { toast } from 'sonner'
 import { useLatestRelease } from '@/hooks/useLatestRelease'
 
@@ -613,11 +614,18 @@ function ScanHistoryPanel() {
 function SettingsPanel() {
   const [interval, setIntervalValue] = useState(60)
   const [saving, setSaving] = useState(false)
+  const [auth, setAuth] = useState<AuthSettingsRead | null>(null)
+  const [secretInput, setSecretInput] = useState('')
+  const [savingAuth, setSavingAuth] = useState(false)
 
   useEffect(() => {
     settingsApi.get()
       .then((res) => setIntervalValue(res.data.interval_seconds))
       .catch(() => {/* use default */})
+  }, [])
+
+  useEffect(() => {
+    settingsApi.authGet().then((res) => setAuth(res.data)).catch(() => setAuth(null))
   }, [])
 
   const handleSave = async () => {
@@ -632,8 +640,32 @@ function SettingsPanel() {
     }
   }
 
+  const handleSaveAuth = async () => {
+    if (!auth) return
+    setSavingAuth(true)
+    try {
+      await settingsApi.authPut({
+        allow_local_login: auth.allow_local_login,
+        authentik_oidc_enabled: auth.authentik_oidc_enabled,
+        authentik_issuer_url: auth.authentik_issuer_url,
+        authentik_client_id: auth.authentik_client_id,
+        authentik_redirect_uri: auth.authentik_redirect_uri,
+        public_app_url: auth.public_app_url,
+        authentik_client_secret: secretInput.trim() ? secretInput : undefined,
+      })
+      const refreshed = await settingsApi.authGet()
+      setAuth(refreshed.data)
+      setSecretInput('')
+      toast.success('Authentik settings saved')
+    } catch {
+      toast.error('Failed to save Authentik settings')
+    } finally {
+      setSavingAuth(false)
+    }
+  }
+
   return (
-    <div className="p-3 space-y-4">
+    <div className="p-3 space-y-6">
       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Settings</span>
 
       <div className="space-y-1.5">
@@ -659,8 +691,87 @@ function SettingsPanel() {
         disabled={saving}
         className="w-full py-1.5 rounded-md text-xs font-medium bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/30 hover:bg-[#00d4ff]/20 transition-colors disabled:opacity-50"
       >
-        {saving ? 'Saving…' : 'Save'}
+        {saving ? 'Saving…' : 'Save interval'}
       </button>
+
+      <div className="border border-border rounded-md p-2.5 space-y-2 bg-[#0d1117]/50">
+        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Authentik (SSO)</span>
+        {!auth ? (
+          <p className="text-[10px] text-muted-foreground">Could not load SSO settings.</p>
+        ) : (
+          <>
+            <label className="flex items-center gap-2 text-[11px] text-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="rounded border-border"
+                checked={auth.authentik_oidc_enabled}
+                onChange={(e) => setAuth({ ...auth, authentik_oidc_enabled: e.target.checked })}
+              />
+              SSO enabled
+            </label>
+            <label className="flex items-center gap-2 text-[11px] text-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="rounded border-border"
+                checked={auth.allow_local_login}
+                onChange={(e) => setAuth({ ...auth, allow_local_login: e.target.checked })}
+              />
+              Allow local username / password login
+            </label>
+            <div className="space-y-0.5">
+              <label className="text-[10px] text-muted-foreground">Issuer URL</label>
+              <input
+                value={auth.authentik_issuer_url}
+                onChange={(e) => setAuth({ ...auth, authentik_issuer_url: e.target.value })}
+                className="w-full px-1.5 py-1 rounded text-[10px] font-mono bg-[#0d1117] border border-border"
+              />
+            </div>
+            <div className="space-y-0.5">
+              <label className="text-[10px] text-muted-foreground">Client ID</label>
+              <input
+                value={auth.authentik_client_id}
+                onChange={(e) => setAuth({ ...auth, authentik_client_id: e.target.value })}
+                className="w-full px-1.5 py-1 rounded text-[10px] font-mono bg-[#0d1117] border border-border"
+              />
+            </div>
+            <div className="space-y-0.5">
+              <label className="text-[10px] text-muted-foreground">Client secret (leave blank to keep current)</label>
+              <input
+                type="password"
+                autoComplete="off"
+                value={secretInput}
+                placeholder={auth.client_secret_configured ? '(unchanged)' : '(required when enabling SSO)'}
+                onChange={(e) => setSecretInput(e.target.value)}
+                className="w-full px-1.5 py-1 rounded text-[10px] font-mono bg-[#0d1117] border border-border"
+              />
+            </div>
+            <div className="space-y-0.5">
+              <label className="text-[10px] text-muted-foreground">Redirect URI</label>
+              <input
+                value={auth.authentik_redirect_uri}
+                onChange={(e) => setAuth({ ...auth, authentik_redirect_uri: e.target.value })}
+                className="w-full px-1.5 py-1 rounded text-[10px] font-mono bg-[#0d1117] border border-border"
+              />
+            </div>
+            <div className="space-y-0.5">
+              <label className="text-[10px] text-muted-foreground">Public site URL</label>
+              <input
+                value={auth.public_app_url}
+                onChange={(e) => setAuth({ ...auth, public_app_url: e.target.value })}
+                className="w-full px-1.5 py-1 rounded text-[10px] font-mono bg-[#0d1117] border border-border"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleSaveAuth}
+              disabled={savingAuth}
+              className="w-full py-1.5 rounded-md text-xs font-medium bg-[#8957e5]/15 text-[#a371f7] border border-[#8957e5]/40 hover:bg-[#8957e5]/25 transition-colors disabled:opacity-50"
+            >
+              {savingAuth ? 'Saving…' : 'Save Authentik'}
+            </button>
+          </>
+        )}
+      </div>
     </div>
   )
 }

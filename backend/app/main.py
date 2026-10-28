@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, canvas, edges, liveview, nodes, scan, status
+from app.api.routes import auth, canvas, edges, liveview, nodes, scan, setup, status
 from app.api.routes import settings as settings_routes
 from app.core.config import settings
 from app.core.scheduler import start_scheduler, stop_scheduler
@@ -28,6 +28,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logging.getLogger("app.services.scanner").setLevel(logging.INFO)
     await init_db()
     settings.load_overrides()
+    settings.reload_auth_from_disk()
     start_scheduler()
     yield
     stop_scheduler()
@@ -44,9 +45,10 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-Homelabable-Setup-Secret"],
 )
 
+app.include_router(setup.router, prefix="/api/v1/setup", tags=["setup"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(nodes.router, prefix="/api/v1/nodes", tags=["nodes"])
 app.include_router(edges.router, prefix="/api/v1/edges", tags=["edges"])
